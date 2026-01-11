@@ -43,7 +43,7 @@ int main() {
 
         // создание визуализации каждой пары сопоставлений занимает большое время, поэтому оставим этот выключатель на будущее
         // когда нужен просто результат без анализа - можно будет выключить
-        bool draw_sides_matching_plots = false;
+        bool draw_sides_matching_plots = true;
 
         Timer all_images_t;
         for (const std::string &image_name: to_process) {
@@ -100,6 +100,8 @@ int main() {
             image8u dilated_eroded_eroded_dilated_mask = morphology::dilate(dilated_eroded_eroded_mask, strength, with_openmp);
             std::cout << "full morphology in " << t.elapsed() << " sec" << std::endl;
 
+            // TODO посмотрите на RGB графики тех сторон у которых нет и не может быть соседей, то есть у белых полос
+            // разумно ли они выглядят? с чем это может быть связано? как это исправить?
             debug_io::dump_image(debug_dir + "03_is_foreground_dilated.png", dilated_mask);
             debug_io::dump_image(debug_dir + "04_is_foreground_dilated_eroded.png", dilated_eroded_mask);
             debug_io::dump_image(debug_dir + "05_is_foreground_dilated_eroded_eroded.png", dilated_eroded_eroded_mask);
@@ -236,9 +238,10 @@ int main() {
 
                             // чтобы удобно было сравнивать - нужно чтобы эти две стороны были выравнены по длине
                             int n = std::min(colorsA.size(), colorsB.size());
-                            float blurStrength = 1.5f;
-                            std::vector<color8u> a = downsample(blur(colorsA, colorsA.size() * blurStrength / n), n);
-                            std::vector<color8u> b = downsample(blur(colorsB, colorsB.size() * blurStrength / n), n);
+                            // TODO посмотрите на графики и подумайте, может имеет смысл как-то воздействовать на снятые с границы цвета?
+                            // например сгладить? если решите попробовать - воспользуйтесь готовой функцией blur(std::vector<color8u> colors, float strength)
+                            std::vector<color8u> a = downsample(colorsA, n);
+                            std::vector<color8u> b = downsample(colorsB, n);
                             rassert(a.size() == n && b.size() == n, 2378192321);
 
                             // теперь давайте в каждой паре пикселей оценим насколько сильно они отличаются
@@ -247,10 +250,10 @@ int main() {
                                 float d = 0;
                                 color8u colA = a[i];
                                 color8u colB = b[i];
+                                // TODO реализуйте какую-то метрику сравнивающую насколько эти два цвета colA и colB отличаются
                                 for (int c = 0; c < channels; ++c) {
-                                    // TODO найдите максимальную разницу среди всех каналов
-                                    float delta = (float) colA(c) - colB(c);
-                                    d = std::max((float) std::abs(delta), d);
+                                    uint8_t colAChannelIntensity = colA(c);
+                                    uint8_t colBChannelIntensity = colB(c);
                                 }
                                 differences[i] = d;
                             }
@@ -258,8 +261,9 @@ int main() {
                                 rassert(differences[i] >= 0.0f, 32423415214, differences[i]);
                             }
 
-                            // и наконец финальный вердикт - насколько сильно отличаются эти две стороны?
-                            float total_difference = stats::percentile(differences, 90);
+                            // TODO и наконец финальный вердикт - насколько сильно отличаются эти две стороны? например это может быть медиана попиксельных разниц
+                            // (не забудьте про stats::median, stats:sum, stats::percentile)
+                            float total_difference = differences[0]; // это совсем простой вариант чтобы код просто компилировался - тут мы берем разницу первого попавшегося одного пикселя
 
                             float previous_best = objMatchedSides[objA][sideA].differenceBest;
                             if (previous_best == -1 || total_difference <= previous_best) {
@@ -280,19 +284,18 @@ int main() {
                                 // визуализируем наложение этих двух сторон
                                 image8u ab_visualization(n + n, std::max(2 * preview_image_height,  2 * colors_rgb_line_height + 4 * separator_line_height + 2 * graph_height + graph_height), 3);
 
-                                // TODO draw graph of A (RGB)
                                 // сначала нарисуем объект A + на нем отмеченная сторона A
                                 point2i offset = {0, 0}; // это точка отступа - где находится угол следующего рисуемого объекта
                                 image8u previewA = objImages[objA];
                                 drawPoints(previewA, objSides[objA][sideA], color8u(255, 0, 0), 5);
-                                previewA = downsample(blur(previewA, previewA.width() * 0.5f * blurStrength / preview_image_width), preview_image_width, preview_image_height);
+                                previewA = downsample(blur(previewA, previewA.width() / preview_image_width), preview_image_width, preview_image_height);
                                 drawImage(ab_visualization, previewA, offset);
                                 offset.y += preview_image_height; // смещаем отступ на высоту нарисованной картинки
 
                                 // затем объект B + на нем отмеченная сторона B
                                 image8u previewB = objImages[objB];
                                 drawPoints(previewB, objSides[objB][sideB], color8u(255, 0, 0), 5);
-                                previewB = downsample(blur(previewB, previewB.width() * 0.5f * blurStrength / preview_image_width), preview_image_width, preview_image_height);
+                                previewB = downsample(blur(previewB, previewB.width() / preview_image_width), preview_image_width, preview_image_height);
                                 drawImage(ab_visualization, previewB, offset);
                                 offset.y += preview_image_height;
 
