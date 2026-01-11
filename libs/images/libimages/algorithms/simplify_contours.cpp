@@ -45,7 +45,7 @@ std::vector<point2i> simplifyContour(const std::vector<point2i> &contour, size_t
     const int n = contour.size();
     std::vector<point2i> result;
 
-    // TODO 2 нам дан контур - это зацикленный обход границы объекта по пикселям
+    // DONE нам дан контур - это зацикленный обход границы объекта по пикселям
     // нам надо его упростить до targetVertexSize вершин (у нас это число будет всегда равно 4)
     // давайте сделаем так: пока у нас много вершин - пытаемся удалить какую-то одну
     // по какому критерию ее выбрать? какую вершину среди оставшихся стоило бы удалить?
@@ -56,10 +56,79 @@ std::vector<point2i> simplifyContour(const std::vector<point2i> &contour, size_t
     // а значит эта вершина и соседние с ней - лежат на одной прямой
     // тогда в конечном итоге останутся вершины на углах
 
-    // и удалите эту ошибку:
-    throw std::runtime_error("Function simplifyContour() is not implemented!");
+    if (targetVertexSize == 0 || contour.empty()) return {};
+    if (static_cast<size_t>(n) <= targetVertexSize) return contour;
 
-    rassert(result.size() == targetVertexSize, 321748219312);
+    std::vector<int> prev(n), next(n);
+    std::vector<bool> alive(n, true);
+    std::vector<std::size_t> version(n, 0);
+
+    for (int i = 0; i < n; ++i) {
+        prev[i] = (i - 1 + n) % n;
+        next[i] = (i + 1) % n;
+    }
+
+    auto compute_cost = [&](int i) -> double {
+        if (!alive[i]) return std::numeric_limits<double>::infinity();
+        const int a = prev[i];
+        const int b = next[i];
+        if (!alive[a] || !alive[b]) return std::numeric_limits<double>::infinity();
+        return dist2_point_to_line(contour[i], contour[a], contour[b]);
+    };
+
+    std::priority_queue<HeapItem, std::vector<HeapItem>, std::greater<HeapItem>> pq;
+    for (int i = 0; i < n; ++i) {
+        pq.push(HeapItem{compute_cost(i), i, version[i]});
+    }
+
+    int aliveCount = n;
+
+    while (aliveCount > static_cast<int>(targetVertexSize)) {
+        rassert(!pq.empty(), 71238123);
+
+        HeapItem it = pq.top();
+        pq.pop();
+
+        const int i = it.idx;
+        if (i < 0 || i >= n) continue;
+        if (!alive[i]) continue;
+        if (it.ver != version[i]) continue;
+
+        const int a = prev[i];
+        const int b = next[i];
+
+        // Remove i from cyclic linked list
+        alive[i] = false;
+        --aliveCount;
+
+        next[a] = b;
+        prev[b] = a;
+
+        // Update neighbors' costs
+        version[a] += 1;
+        version[b] += 1;
+        pq.push(HeapItem{compute_cost(a), a, version[a]});
+        pq.push(HeapItem{compute_cost(b), b, version[b]});
+    }
+
+    // Collect remaining vertices in contour order starting from the smallest original index still alive.
+    int start = -1;
+    for (int i = 0; i < n; ++i) {
+        if (alive[i]) {
+            start = i;
+            break;
+        }
+    }
+    rassert(start >= 0, 71238124);
+
+    result.reserve(targetVertexSize);
+
+    int cur = start;
+    do {
+        result.push_back(contour[cur]);
+        cur = next[cur];
+    } while (cur != start && static_cast<int>(result.size()) <= aliveCount + 1);
+
     return result;
 }
 

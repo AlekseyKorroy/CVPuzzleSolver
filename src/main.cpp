@@ -110,7 +110,7 @@ int main() {
             debug_io::dump_image(obj_debug_dir + "01_image.jpg", objImages[obj]);
             debug_io::dump_image(obj_debug_dir + "02_mask.jpg", objMasks[obj]);
 
-            // TODO 1 реализуйте построение маски контура-периметра, нажмите Ctrl+Click на buildContourMask:
+            // DONE реализуйте построение маски контура-периметра, нажмите Ctrl+Click на buildContourMask:
             image8u objContourMask = buildContourMask(objMasks[obj]);
 
             debug_io::dump_image(obj_debug_dir + "03_mask_contour.jpg", objContourMask);
@@ -130,7 +130,7 @@ int main() {
             debug_io::dump_image(obj_debug_dir + "04_mask_contour_clockwise.jpg", contour_visualization);
 
             // у нас теперь есть перечень пикселей на контуре объекта
-            // TODO 2 реализуйте определение в этом контуре 4 вершин-углов и нарисуйте их на картинке, нажмите Ctrl+Click на simplifyContour:
+            // DONE реализуйте определение в этом контуре 4 вершин-углов и нарисуйте их на картинке, нажмите Ctrl+Click на simplifyContour:
             std::vector<point2i> corners = simplifyContour(contour, 4);
             rassert(corners.size() == 4, 32174819274812);
 
