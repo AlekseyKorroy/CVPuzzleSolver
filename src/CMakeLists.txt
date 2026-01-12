@@ -1,5 +1,6 @@
 add_executable(CVPuzzleSolver
         main.cpp
+        puzzle_assembly.cpp
         sides_comparison_utils.cpp
 )
 target_link_libraries(CVPuzzleSolver PRIVATE libbase libimages)

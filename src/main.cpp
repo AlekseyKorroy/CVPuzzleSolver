@@ -22,6 +22,7 @@
 #include <unordered_map>
 
 #include "sides_comparison_utils.h"
+#include "puzzle_assembly.h"
 
 int main() {
     try {
@@ -43,7 +44,7 @@ int main() {
 
         // создание визуализации каждой пары сопоставлений занимает большое время, поэтому оставим этот выключатель на будущее
         // когда нужен просто результат без анализа - можно будет выключить
-        bool draw_sides_matching_plots = true;
+        bool draw_sides_matching_plots = false;
 
         Timer all_images_t;
         for (const std::string &image_name: to_process) {
@@ -143,6 +144,7 @@ int main() {
             debug_io::dump_image(debug_dir + "07_colorized_objects.jpg", debug_io::colorize_labels(image_with_object_indices, 0));
 
             std::vector<std::vector<std::vector<point2i>>> objSides(objects_count);
+            std::vector<std::vector<point2i>> objCorners(objects_count);
             for (int obj = 0; obj < objects_count; ++obj) {
                 std::string obj_debug_dir = debug_dir + "objects/object" + std::to_string(obj) + "/";
 
@@ -171,6 +173,7 @@ int main() {
                 // у нас теперь есть перечень пикселей на контуре объекта
                 // DONE реализуйте определение в этом контуре 4 вершин-углов и нарисуйте их на картинке, нажмите Ctrl+Click на simplifyContour:
                 std::vector<point2i> corners = simplifyContour(contour, 4);
+                objCorners[obj] = corners;
                 rassert(corners.size() == 4, 32174819274812);
 
                 // сделаем черную картинку чтобы визуализировать вершины-углы на ней
@@ -197,17 +200,11 @@ int main() {
                 objSides[obj] = sides;
             }
 
-            struct MatchedSide {
-                int objB = -1;
-                int sideB = -1;
-                float differenceBest = -1;
-                float differenceSecondBest = -1;
-            };
             // в этом векторе мы будем хранить сопоставления:
-            // objB - индекс сопоставленного объекта-кусочка пазла
-            // sideB - индекс сопоставленной стороны сопоставленного кусочка
-            // differenceBest - насколько отличаются цвета (по нашей метрике, 0 - совпадают идеально)
-            // differenceSecondBest - насколько отличаются цвета со второй по лучшевизне сопоставленной стороной
+            // MatchedSide.objB - индекс сопоставленного объекта-кусочка пазла
+            // MatchedSide.sideB - индекс сопоставленной стороны сопоставленного кусочка
+            // MatchedSide.differenceBest - насколько отличаются цвета (по нашей метрике, 0 - совпадают идеально)
+            // MatchedSide.differenceSecondBest - насколько отличаются цвета со второй по лучшевизне сопоставленной стороной
             //        (нужно для анализа "насколько наша метрика уверенно отличила правильный ответ от ложного")
             // если сопоставления не нашлось: -1 -1 -1
             std::vector<std::vector<MatchedSide>> objMatchedSides(objects_count);
@@ -258,7 +255,7 @@ int main() {
                             int n = std::min(colorsA.size(), colorsB.size());
                             // DONE 2 посмотрите на графики и подумайте, может имеет смысл как-то воздействовать на снятые с границы цвета?
                             // например сгладить? если решите попробовать - воспользуйтесь готовой функцией blur(std::vector<color8u> colors, float strength)
-                            float blur_strength = 2.0f;
+                            float blur_strength = 4.0f;
                             std::vector<color8u> a = downsample(blur(colorsA, blur_strength), n);
                             std::vector<color8u> b = downsample(blur(colorsB, blur_strength), n);
                             rassert(a.size() == n && b.size() == n, 2378192321);
@@ -431,8 +428,33 @@ int main() {
                     std::cout << "correct matches: " << correct_matches_count << std::endl;
                     std::cout << "incorrect matches: " << incorrect_matches_count << std::endl;
                 }
-                debug_io::dump_image(debug_dir + "07_matched_sides.jpg", segments_between_matched_sides);
+                debug_io::dump_image(debug_dir + "08_matched_sides.jpg", segments_between_matched_sides);
             }
+
+            // Занятие 7
+            // Итак у нас есть:
+            // 1) objOffsets, objImages, objMasks - извлеченные изображения объектов-кусочков (с маской и смещением указывающим на позицию в целой картинке)
+            // 2) objSides[obj][side] - vector<point2i> - координаты пикселей стороны side объекта obj (в его извлеченном изображении)
+            // 3) objMatchedSides[objA][sideA] = {objB, sideB, ...}; - информация о том с каким (objB, sideB) нас сопоставило, или (-1, -1) если мы являемся белым краем
+
+            // TODO План:
+            // 1) Построить граф: вершины - объекты, ребра - сопоставления с другими объектами (из objMatchedSides)
+            // 2) Найти в графе вершины-углы - попробовать выложить паззл начиная с них
+            // 3) Найдя угол выясним сколько кусочков в ширину - прошагаем по графу вправо до упора
+            // 4) Так же выясним сколько кусочков в высоту - шагаем от угла вниз до упора
+            // 5) Сверяем что ширина * высоту = числу кусочков (иначе - пропускаем этот уголок, попробуем начать с другого)
+            // 6) Создаем двумерный массив, каждая ячейка будет хранить номер кусочка-объекта + число поворотов по часовой стрелке (такое чтобы side0 смотрело направо, соответственно side1 - вниз, и т.д.) - TODO
+            // 7) Выводим его для проверки в консоль
+            // 8) Заполняем его распространяясь в ширину от кусочка-уголка
+            // 9) Определим ширину/высоту каждого столбика/строки пазла (медиана от ширин/высот назначенных кусочков) - TODO (пока что захардкодить константный размер)
+            // 10) Найдем для каждого кусочка матрицу описывающую переход из его изображения в общий холст
+            // 11) Спроецируем все кусочки этой матрицей
+            PuzzleAssemblyResult assembled = assemblePuzzle(objImages, objMasks, objCorners, objMatchedSides);
+
+            printGrid(std::cout, assembled);
+
+            debug_io::dump_image(debug_dir + "09_assembled_with_lines.png", assembled.assembledWithLines);
+            debug_io::dump_image(debug_dir + "10_assembled.png", assembled.assembled);
 
             std::cout << "image " << image_name << " processed in " << total_t.elapsed() << " sec" << std::endl;
         }
